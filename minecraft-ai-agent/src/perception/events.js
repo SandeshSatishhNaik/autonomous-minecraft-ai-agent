@@ -4,6 +4,9 @@
 
 let bot = null;
 
+// Chat disabled to prevent server kicks
+const CHAT_ENABLED = false;
+
 // Reflex system state
 const reflexState = {
   lastReflexTime: {},
@@ -243,7 +246,7 @@ function setupPlayerInteractionEvents() {
       console.log(`[INTERACT] ${player.username} right-clicked bot`);
       
       if (canTriggerReflex(REFLEX_TYPES.PLAYER_INTERACT)) {
-        bot.chat(`Hello ${player.username}! I'm an AI agent.`);
+        if (CHAT_ENABLED) bot.chat(`Hello ${player.username}! I'm an AI agent.`);
       }
     }
   });
@@ -272,7 +275,7 @@ function setupChatEvents() {
     
     // Hello/Hi response
     if (lowerMsg.includes('hello') || lowerMsg.includes('hi') || lowerMsg.includes('hey')) {
-      bot.chat(`Hello ${username}! 👋 I'm an AI agent.`);
+      if (CHAT_ENABLED) bot.chat(`Hello ${username}! 👋 I'm an AI agent.`);
     }
     
     // Status/What do you see
@@ -280,28 +283,28 @@ function setupChatEvents() {
       const health = bot.health?.toFixed(1) || '?';
       const food = bot.food || '?';
       const posStr = pos ? `X:${Math.floor(pos.x)} Y:${Math.floor(pos.y)} Z:${Math.floor(pos.z)}` : 'unknown';
-      bot.chat(`Status: HP:${health} Food:${food} | Pos: ${posStr}`);
+      if (CHAT_ENABLED) bot.chat(`Status: HP:${health} Food:${food} | Pos: ${posStr}`);
     }
     
     // Who are you?
     if (lowerMsg.includes('who') && (lowerMsg.includes('are') || lowerMsg.includes('you'))) {
-      bot.chat("I'm an autonomous AI agent! I can see mobs, scan environment, and survive on my own.");
+      if (CHAT_ENABLED) bot.chat("I'm an autonomous AI agent! I can see mobs, scan environment, and survive on my own.");
     }
     
     // Help
     if (lowerMsg.includes('help')) {
-      bot.chat("Commands: 'status', 'hello', 'who are you', 'help', 'attack', 'run', 'come here'");
+      if (CHAT_ENABLED) bot.chat("Commands: 'status', 'hello', 'who are you', 'help', 'attack', 'run', 'come here'");
     }
     
     // Attack command
     if (lowerMsg.includes('attack')) {
-      bot.chat("⚔️ I'll attack nearest hostile!");
+      if (CHAT_ENABLED) bot.chat("⚔️ I'll attack nearest hostile!");
       triggerReflex('manual_attack', { player: username });
     }
     
     // Run/Flee command
     if (lowerMsg.includes('run') || lowerMsg.includes('flee') || lowerMsg.includes('escape')) {
-      bot.chat("🏃 Running away!");
+      if (CHAT_ENABLED) bot.chat("🏃 Running away!");
       triggerReflex('manual_flee', { player: username });
     }
     
@@ -319,16 +322,16 @@ function setupChatEvents() {
           const { GoalNear } = require('mineflayer-pathfinder').goals;
           
           bot.pathfinder.setGoal(GoalNear(targetPos.x, targetPos.y, targetPos.z, 2));
-          bot.chat(`Coming to you, ${username}!`);
+          if (CHAT_ENABLED) bot.chat(`Coming to you, ${username}!`);
         }
       } catch (e) {
-        bot.chat("Can't find you right now!");
+        if (CHAT_ENABLED) bot.chat("Can't find you right now!");
       }
     }
     
     // Thanks
     if (lowerMsg.includes('thanks') || lowerMsg.includes('thank')) {
-      bot.chat("You're welcome! 👾");
+      if (CHAT_ENABLED) bot.chat("You're welcome! 👾");
     }
   });
   
@@ -419,23 +422,8 @@ function setupDeathEvents() {
     console.log(`\n[RESPAWN] ⚠️ Bot respawned at ${posStr}`);
     console.log(`[RESPAWN] Health: ${bot.health}/${bot.maxHealth} | Food: ${bot.food}/20`);
     
-    // Immediately move to safe spot and send chat to prove alive
-    setTimeout(() => {
-      bot.chat('✅ Alive!');
-      // Move slightly to prove functionality
-      bot.setControlState('jump', true);
-      setTimeout(() => {
-        bot.setControlState('jump', false);
-        bot.chat('🏃 Moving to safety...');
-      }, 200);
-    }, 500);
-    
-    // After respawn, try to find safe spot
-    setTimeout(() => {
-      if (canTriggerReflex('post_respawn')) {
-        triggerReflex('post_respawn', { position: posStr });
-      }
-    }, 2000);
+    // Only log, NO chat on respawn to avoid spam
+    console.log('[RESPAWN] Bot alive - searching for safe spot...');
   });
 }
 
@@ -539,33 +527,31 @@ async function triggerReflex(reflexType, data = {}) {
 
 // ==================== REFLEX HANDLERS ====================
 
+// Minimal chat - only in emergencies
+const EMERGENCY_CHAT = false; // Set to false to reduce spam
+
 // Critical health - find safe spot and heal
 async function handleCriticalHealth(data) {
   console.log('[REFLEX] 🔴 CRITICAL HEALTH - Attempting to flee and heal!');
-  bot.chat('⚠️ Critical health! Running to safety!');
+  if (EMERGENCY_CHAT) bot.chat('⚠️ Critical health! Running to safety!');
   
   reflexState.isFleeing = true;
   await fleeToSafety();
   
-  // Try to eat if we have food
   await attemptAutoEat();
 }
 
 // Low health - be more cautious
 async function handleLowHealth(data) {
   console.log(`[REFLEX] 🟡 Low health (${data.health}/${data.maxHealth})`);
-  
-  // Try to eat
   await attemptAutoEat();
-  
-  // Be more alert to dangers
   console.log('[REFLEX] Being cautious - avoiding combat');
 }
 
 // On fire - find water
 async function handleOnFire(data) {
   console.log('[REFLEX] 🔥 ON FIRE - Looking for water!');
-  bot.chat('🔥 On fire! Finding water!');
+  if (EMERGENCY_CHAT) bot.chat('🔥 On fire! Finding water!');
   
   await findWater();
 }
@@ -573,7 +559,7 @@ async function handleOnFire(data) {
 // Creeper nearby - RUN!
 async function handleCreeperNearby(data) {
   console.log(`[REFLEX] 💥 CREEPER at ${data.distance} blocks - RUNNING!`);
-  bot.chat('💥 CREEPER! RUNNING!');
+    if (EMERGENCY_CHAT) bot.chat('💥 CREEPER! RUNNING!');
   
   reflexState.isFleeing = true;
   
@@ -602,7 +588,7 @@ async function handleHostileAttacking(data) {
   
   if (bot.health <= 10 || data.action === 'flee') {
     // Too weak to fight - flee!
-    bot.chat('Too weak! Running away!');
+    if (EMERGENCY_CHAT) bot.chat('Too weak! Running away!');
     reflexState.isFleeing = true;
     await fleeToSafety();
   } else {
@@ -621,7 +607,7 @@ async function handleLowFood(data) {
 // Player attack - respond
 async function handlePlayerAttack(data) {
   console.log(`[REFLEX] 👊 Attacked by player ${data.player}`);
-  bot.chat(`Hey ${data.player}! Why are you attacking me?`);
+    if (EMERGENCY_CHAT) bot.chat(`Hey ${data.player}! Why are you attacking me?`);
 }
 
 // Sound detected
@@ -634,7 +620,7 @@ function handleWeatherChange(data) {
   console.log(`[REFLEX] 🌧️ Weather: ${data.from} → ${data.to}`);
   
   if (data.to === 'thunder') {
-    bot.chat('⛈️ Thunderstorm! Finding shelter...');
+    if (EMERGENCY_CHAT) bot.chat('⛈️ Thunderstorm! Finding shelter...');
   }
 }
 
@@ -655,7 +641,7 @@ async function handleFallDamage(data) {
 // Manual flee command
 async function handleManualFlee(data) {
   console.log('[REFLEX] 🏃 Manual flee command');
-  bot.chat('🏃 Running away!');
+    if (EMERGENCY_CHAT) bot.chat('🏃 Running away!');
   reflexState.isFleeing = true;
   await fleeToSafety();
 }
@@ -663,14 +649,14 @@ async function handleManualFlee(data) {
 // Manual attack command
 async function handleManualAttack(data) {
   console.log('[REFLEX] ⚔️ Manual attack command');
-  bot.chat('⚔️ Looking for enemies to attack!');
+    if (EMERGENCY_CHAT) bot.chat('⚔️ Looking for enemies to attack!');
   await attackNearestHostile();
 }
 
 // Post respawn handler
 async function handlePostRespawn(data) {
   console.log('[REFLEX] Post-respawn - finding safe spot');
-  bot.chat('Respawned! Moving to safe area...');
+    if (EMERGENCY_CHAT) bot.chat('Respawned! Moving to safe area...');
   await fleeToSafety();
 }
 
@@ -782,7 +768,7 @@ async function attackNearestHostile() {
     
     if (nearestHostile && nearestDist <= 15) {
       console.log(`[ATTACK] Attacking ${nearestHostile.name} at ${Math.floor(nearestDist)} blocks`);
-      bot.chat(`Attacking ${nearestHostile.name}!`);
+      if (CHAT_ENABLED) bot.chat(`Attacking ${nearestHostile.name}!`);
       
       // Move to and attack
       bot.pathfinder.setGoal(new (require('mineflayer-pathfinder').goals).GoalNear(
@@ -799,7 +785,7 @@ async function attackNearestHostile() {
       }, 3000);
       
     } else {
-      bot.chat('No enemies nearby to attack!');
+      if (CHAT_ENABLED) bot.chat('No enemies nearby to attack!');
     }
     
   } catch (e) {

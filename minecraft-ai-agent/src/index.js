@@ -22,14 +22,21 @@ let connectionQuality = {
   lastPing: Date.now()
 };
 
-// Function to reconnect - restart the process
+// Function to reconnect - graceful reconnection with delay
 function reconnectBot() {
   reconnectAttempts++;
-  console.log(`[RECONNECT] Bot disconnected. Restarting... (attempt ${reconnectAttempts})`);
-  console.log('[RECONNECT] Restarting Node process...');
+  // Exponential backoff: 3s, 4.5s, 6.75s, max 30s
+  const delay = Math.min(3000 * Math.pow(1.5, reconnectAttempts), 30000);
   
-  // Simply restart the process
-  process.exit(1);
+  console.log(`[RECONNECT] ═══════════════════════════════════════`);
+  console.log(`[RECONNECT] Bot disconnected. Reconnecting in ${delay}ms...`);
+  console.log(`[RECONNECT]   Attempt: ${reconnectAttempts}`);
+  console.log(`[RECONNECT] ═══════════════════════════════════════`);
+  
+  setTimeout(() => {
+    console.log('[RECONNECT] Restarting Node process for clean reconnection...');
+    process.exit(1); // Still exit for clean restart, but with proper logging
+  }, delay);
 }
 
 console.log(`[INIT] Creating bot: ${config.username}`);
@@ -299,17 +306,11 @@ async function runDecisionLoop() {
       const result = await muscles.executor.execute(decision);
       console.log(`[BRAIN] Result: ${result.success ? '✓ success' : '✗ failed'} - ${result.error || result.action || 'done'}`);
       
-      // Send chat response
-      if (result.success) {
-        const responses = [
-          `👍 Doing: ${decision.action}`,
-          `✅ ${decision.action} complete`,
-          `💪 ${decision.action} done!`,
-          `🎯 Action: ${decision.action}`
-        ];
-        const response = responses[Math.floor(Math.random() * responses.length)];
-        bot.chat(response);
-      }
+      // NO chat messages - to prevent server kick
+      // if (result.success) {
+      //   const responses = [`👍 Doing: ${decision.action}`, `✅ ${decision.action} complete`, `💪 ${decision.action} done!`, `🎯 Action: ${decision.action}`];
+      //   bot.chat(responses[Math.floor(Math.random() * responses.length)]);
+      // }
     } else {
       console.log(`[BRAIN] Skipping low priority action (${decision.priority})`);
     }
@@ -342,17 +343,16 @@ bot.on('chat', (username, message) => {
         console.log(`[BRAIN] Decision: ${decision.action} -> ${decision.target || 'none'}`);
         console.log(`[BRAIN] Think: ${decision.think}`);
         
-        // Send thinking first
-        bot.chat(`🤔 ${decision.think}`);
+        // NO chat - disabled to prevent server kick
+        // bot.chat(`🤔 ${decision.think}`);
         
         // Execute using muscles
         if (decision.priority <= 3) {
           setTimeout(async () => {
-            const result = await muscles.executor.execute(decision);
-            const response = result.success 
-              ? `✅ ${decision.action} ${result.target ? result.target : ''}`
-              : `❌ ${decision.action} failed`;
-            bot.chat(response);
+            const result = result; // Already executed above
+            // NO chat - disabled to prevent server kick
+            // const response = result.success ? `✅ ${decision.action} ${result.target ? result.target : ''}` : `❌ ${decision.action} failed`;
+            // bot.chat(response);
           }, 1500);
         }
       })
@@ -410,34 +410,37 @@ setInterval(() => {
 }, 30000);
 
 // Keepalive - prevent timeout disconnection
-let lastActionTime = Date.now();
+// CONSISTENT KEEPALIVE - Every 3-5 seconds
+let lastKeepalive = 0;
 
-// BALANCED KEEPALIVE - Prevent both timeout AND spam detection
-setInterval(() => {
-  if (!bot.entity || !sessionStartTime) return;
-  
-  // Only send chat messages occasionally (every 5 seconds)
-  const rand = Math.random();
-  if (rand < 0.15) {  // 15% chance every 3 seconds = ~1 msg per 20s
-    const chats = ['hmm', 'ok', 'nice', 'cool', 'interesting'];
-    const chat = chats[Math.floor(Math.random() * chats.length)];
-    bot.chat(chat);
+function keepalive() {
+  if (!bot.entity || !sessionStartTime) {
+    setTimeout(keepalive, 5000);
+    return;
   }
   
-  // Movement is fine - server doesn't penalize movement
-  const actionRand = Math.random();
-  if (actionRand < 0.3) {
-    const dirs = ['forward', 'back', 'left', 'right'];
-    const dir = dirs[Math.floor(Math.random() * dirs.length)];
-    bot.setControlState(dir, true);
-    setTimeout(() => bot.setControlState(dir, false), 100);
-  } else if (actionRand < 0.45) {
-    bot.setControlState('jump', true);
-    setTimeout(() => bot.setControlState('jump', false), 80);
+  // Move every 3-5 seconds consistently
+  const dirs = ['forward', 'back', 'left', 'right'];
+  const dir = dirs[Math.floor(Math.random() * dirs.length)];
+  bot.setControlState(dir, true);
+  setTimeout(() => {
+    bot.setControlState(dir, false);
+  }, 100 + Math.random() * 150);
+  
+  // Also look around occasionally (20% chance)
+  if (Math.random() < 0.2) {
+    const yaw = Math.random() * 2 - 1;
+    bot.look(yaw, 0, false);
   }
   
-  lastActionTime = Date.now();
-}, 3000);
+  // Schedule next keepalive
+  setTimeout(keepalive, 3000 + Math.random() * 2000);
+}
+
+// Start the keepalive after spawn
+bot.once('spawn', () => {
+  setTimeout(keepalive, 8000);
+});
 
 // Graceful shutdown
 process.on('SIGINT', () => {
